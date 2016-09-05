@@ -10,6 +10,8 @@ import (
 	"bufio"
 	"io"
 	"archive/tar"
+	"strconv"
+	"unicode"
 )
 
 func main() {
@@ -99,8 +101,7 @@ func processArchivedFile(archivedFile *zip.File, tw *tar.Writer) error {
 	var processedContent string
 	if strings.Contains(archivedFile.Name, "_integers_") {
 		log.Printf("Archived file with integers: %v", archivedFile.Name)
-		//TODO implement transformInt
-		processedContent, err = processLineByLine(file, transformString)
+		processedContent, err = processLineByLine(file, transformInt)
 		if err != nil {
 			log.Printf("Error by processing line by line: %v", err)
 			return err
@@ -163,9 +164,39 @@ func processLineByLine(inputFile io.ReadCloser, handler func(string) string) (st
 	}
 }
 
+func transformInt(line string) string {
+	tokens := strings.Split(line, " ")
+	var transformedTokens []string
+	for _, token := range tokens {
+		num, err := strconv.Atoi(token)
+		if err != nil {
+			transformedTokens = append(transformedTokens, token)
+		} else {
+			transformedTokens = append(transformedTokens, strconv.Itoa(num + 123))
+		}
+	}
+
+	return strings.Join(transformedTokens, " ")
+}
+
 func transformString(line string) string {
 	tokens := strings.Split(line, " ")
-	return strings.Join(tokens, " ")
+	var transformedTokens []string
+	for _, token := range tokens {
+		size :=len(token)
+		var reversed []rune = make([]rune, size)
+		for i, ch := range token {
+			if (unicode.IsLower(ch)) {
+				reversed[size-i-1] = unicode.ToUpper(ch)
+			} else if (unicode.IsUpper(ch)) {
+				reversed[size-i-1] = unicode.ToLower(ch)
+			} else {
+				reversed[size-i-1] = ch
+			}
+		}
+		transformedTokens = append(transformedTokens, string(reversed))
+	}
+	return strings.Join(transformedTokens, " ")
 }
 
 func noTransform(line string) string {
