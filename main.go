@@ -1,18 +1,36 @@
 package main
 
 import (
-	"fmt"
-	"github.com/jawher/mow.cli"
-	"log"
-	"os"
-	"strings"
+	"archive/tar"
 	"archive/zip"
 	"bufio"
+	"fmt"
+	"github.com/jawher/mow.cli"
 	"io"
-	"archive/tar"
+	"log"
+	"os"
 	"strconv"
+	"strings"
 	"unicode"
 )
+
+type conf struct {
+	inputFilePath  string
+	outputFilePath string
+}
+
+type archiveProcessor struct {
+	config      conf
+	inputFileRC *zip.ReadCloser
+	outputFile  *os.File
+	tw          *tar.Writer
+}
+
+type processor interface {
+	init() error
+	shutdown()
+	process() error
+}
 
 func main() {
 	log.Printf("Application starting with args %s", os.Args)
@@ -40,32 +58,62 @@ func main() {
 			log.Fatalf("%v", err)
 			return
 		}
-		inputFileRC, err := zip.OpenReader(*inputFilePath)
+		processingApp := &archiveProcessor{config: conf{inputFilePath: *inputFilePath, outputFilePath: *outputFilePath}}
+
+		err := processingApp.init()
+		defer processingApp.shutdown()
 		if err != nil {
-			log.Fatalf("Cannot open input file: %v, error: %v", *inputFilePath, err)
+			log.Fatalf("%v", err)
+			return
 		}
-		defer inputFileRC.Close()
-
-		flags := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
-		outputFile, err := os.OpenFile(*outputFilePath, flags, 0644)
-		if err != nil {
-			log.Fatalf("Cannot open output file: %v, error: %v", outputFilePath, err)
-		}
-		defer outputFile.Close()
-
-		tw := tar.NewWriter(outputFile)
-		defer tw.Close()
-
-		for _, archivedFile := range inputFileRC.File {
-			err := processArchivedFile(archivedFile, tw)
-			if err != nil {
-				break
-			}
+		if err := processingApp.process(); err != nil {
+			log.Fatalf("%v", err)
 		}
 
 		log.Println("Application finished")
 	}
 	app.Run(os.Args)
+}
+
+func (app *archiveProcessor) process() error {
+	for _, archivedFile := range app.inputFileRC.File {
+		err := processArchivedFile(archivedFile, app.tw)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (app *archiveProcessor) init() error {
+	inputFileRC, err := zip.OpenReader(app.config.inputFilePath)
+	if err != nil {
+		return fmt.Errorf("Cannot open input file: %v, error: %v", app.config.inputFilePath, err)
+	}
+	app.inputFileRC = inputFileRC
+
+	flags := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+	outputFile, err := os.OpenFile(app.config.outputFilePath, flags, 0644)
+	if err != nil {
+		return fmt.Errorf("Cannot open output file: %v, error: %v", app.config.outputFilePath, err)
+	}
+
+	app.outputFile = outputFile
+	app.tw = tar.NewWriter(outputFile)
+	return nil
+}
+
+func (app *archiveProcessor) shutdown() {
+	if app.inputFileRC != nil {
+		app.inputFileRC.Close()
+	}
+	if app.tw != nil {
+		app.tw.Close()
+	}
+	if app.outputFile != nil {
+		app.outputFile.Close()
+	}
 }
 
 func validateInputFile(inputFilePath string) error {
@@ -147,7 +195,7 @@ func processArchivedFile(archivedFile *zip.File, tw *tar.Writer) error {
 }
 
 func processLineByLine(inputFile io.ReadCloser, handler func(string) string) (string, error) {
-	var processedLines []string = make([]string, 0)
+	processedLines := make([]string, 0)
 	bufferedReader := bufio.NewReader(inputFile)
 	for {
 		lineContent, prefix, err := bufferedReader.ReadLine()
@@ -172,7 +220,7 @@ func transformInt(line string) string {
 		if err != nil {
 			transformedTokens = append(transformedTokens, token)
 		} else {
-			transformedTokens = append(transformedTokens, strconv.Itoa(num + 123))
+			transformedTokens = append(transformedTokens, strconv.Itoa(num+123))
 		}
 	}
 
@@ -183,12 +231,12 @@ func transformString(line string) string {
 	tokens := strings.Split(line, " ")
 	var transformedTokens []string
 	for _, token := range tokens {
-		size :=len(token)
+		size := len(token)
 		var reversed []rune = make([]rune, size)
 		for i, ch := range token {
-			if (unicode.IsLower(ch)) {
+			if unicode.IsLower(ch) {
 				reversed[size-i-1] = unicode.ToUpper(ch)
-			} else if (unicode.IsUpper(ch)) {
+			} else if unicode.IsUpper(ch) {
 				reversed[size-i-1] = unicode.ToLower(ch)
 			} else {
 				reversed[size-i-1] = ch
