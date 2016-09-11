@@ -1,3 +1,4 @@
+[![CircleCI](https://circleci.com/gh/tosan88/go-exercise-1.svg?style=shield)](https://circleci.com/gh/tosan88/go-exercise-1)
 # go-exercise-1
 Exercising go skills
 
