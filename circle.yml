@@ -1,0 +1,5 @@
+test:
+  override:
+    - gocov test ./... > coverage.json
+  post:
+    - gocov-html coverage.json > $CIRCLE_ARTIFACTS/coverage.ht

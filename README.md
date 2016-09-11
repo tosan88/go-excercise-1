@@ -7,3 +7,9 @@ Exercising go skills
 go get -u github.com/tosan88/go-exercise-1
 go run main.go --input-file="yourInputFile.zip" --output-file="yourOutputFile.tar"
 ```
+
+## Test
+
+```
+go test -v -race ./...
+```
