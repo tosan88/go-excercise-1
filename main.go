@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 )
 
 type conf struct {
@@ -31,6 +32,11 @@ func main() {
 	})
 
 	app.Action = func() {
+		defer func(start time.Time) {
+			elapsed := time.Since(start)
+			log.Printf("Application finished. Took %v seconds", elapsed.Seconds())
+		}(time.Now())
+
 		if err := validateInputFile(*inputFilePath); err != nil {
 			log.Fatalf("%v", err)
 			return
@@ -56,7 +62,6 @@ func main() {
 			log.Fatalf("%v", err)
 		}
 
-		log.Println("Application finished")
 	}
 	app.Run(os.Args)
 }
