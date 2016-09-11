@@ -13,12 +13,6 @@ type conf struct {
 	outputFilePath string
 }
 
-type processor interface {
-	init() error
-	shutdown()
-	process() error
-}
-
 func main() {
 	log.Printf("Application starting with args %s", os.Args)
 	app := cli.App("go-exercise-1",

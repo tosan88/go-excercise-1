@@ -21,8 +21,12 @@ func TestTransformMultipleStringsReversedAndSwappedCase(t *testing.T) {
 	assert.Equal(t, "HeLLO hé⌘ű日本語", transformString("ollEh 語本日Ű⌘ÉH"))
 }
 
-func TestTransformIntValidNumber(t *testing.T) {
+func TestTransformIntPositiveNumber(t *testing.T) {
 	assert.Equal(t, "444", transformInt("321"))
+}
+
+func TestTransformIntNegativeNumber(t *testing.T) {
+	assert.Equal(t, "23", transformInt("-100"))
 }
 
 func TestTransformIntNotValidNumber(t *testing.T) {

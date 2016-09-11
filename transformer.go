@@ -27,7 +27,7 @@ func transformString(line string) string {
 	var transformedTokens []string
 	for _, token := range tokens {
 		size := utf8.RuneCountInString(token)
-		var reversed []rune = make([]rune, size)
+		reversed := make([]rune, size)
 		chCount := 1
 		for _, ch := range token {
 			if unicode.IsLower(ch) {
