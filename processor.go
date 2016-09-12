@@ -22,7 +22,8 @@ type archiveProcessor struct {
 
 type archivable struct {
 	content  string
-	fileInfo os.FileInfo
+	archivedFile *zip.File
+	writeHandler func(*archiveProcessor, archivable, chan<- error)
 }
 
 func (app *archiveProcessor) init() error {
@@ -90,13 +91,14 @@ func (app *archiveProcessor) process() error {
 				defer wg.Done()
 				app.lk.Lock()
 				defer app.lk.Unlock()
-				app.writeContentToFile(arch.fileInfo, arch.content, errCh)
+				arch.writeHandler(app, arch, errCh)
+				//app.writeContentToFile(arch.archivedFile, arch.content, errCh)
 			}(&writerWg)
 		}
 	}
 }
 
-func (app *archiveProcessor) processArchivedFile(archivedFile *zip.File, errCh chan error, processedContentCh chan archivable) {
+func (app *archiveProcessor) processArchivedFile(archivedFile *zip.File, errCh chan error, archivableCh chan archivable) {
 	log.Printf("Processing file: %v", archivedFile.Name)
 	file, err := archivedFile.Open()
 	if err != nil {
@@ -105,28 +107,37 @@ func (app *archiveProcessor) processArchivedFile(archivedFile *zip.File, errCh c
 	defer file.Close()
 
 	fileName := archivedFile.Name
-	var processedContent string
 	if strings.Contains(fileName, "_integers_") {
 		log.Printf("Archived file with integers: %v", fileName)
-		processedContent, err = processLineByLine(file, transformInt)
+		processedContent, err := processLineByLine(file, transformInt)
 		if err != nil {
 			errCh <- fmt.Errorf("Error by processing line by line: %v", err)
+		}
+		archivableCh <- archivable{
+			content: processedContent,
+			archivedFile: archivedFile,
+			writeHandler: handleProcessedContent,
 		}
 
 	} else if strings.Contains(fileName, "_strings_") {
 		log.Printf("Archived file with strings: %v", fileName)
-		processedContent, err = processLineByLine(file, transformString)
+		processedContent, err := processLineByLine(file, transformString)
 		if err != nil {
 			errCh <- fmt.Errorf("Error by processing line by line: %v", err)
+		}
+		archivableCh <- archivable{
+			content: processedContent,
+			archivedFile: archivedFile,
+			writeHandler: handleProcessedContent,
 		}
 	} else {
 		log.Printf("File is not eligible for transformation: %v", fileName)
-		processedContent, err = processLineByLine(file, noTransform)
-		if err != nil {
-			errCh <- fmt.Errorf("Error by processing line by line: %v", err)
+		archivableCh <- archivable{
+			archivedFile: archivedFile,
+			writeHandler: handleUnprocessedContent,
 		}
 	}
-	processedContentCh <- archivable{processedContent, archivedFile.FileInfo()}
+
 }
 
 func processLineByLine(inputFile io.Reader, handler func(string) string) (string, error) {
@@ -148,20 +159,49 @@ func processLineByLine(inputFile io.Reader, handler func(string) string) (string
 	}
 }
 
-func (app *archiveProcessor) writeContentToFile(fileInfo os.FileInfo, processedContent string, errCh chan<- error) {
-	fileInfoHeader, err := tar.FileInfoHeader(fileInfo, "")
+func (app *archiveProcessor) copyFile(archivedFile *zip.File, errCh chan<- error) {
+	fileInfoHeader, err := tar.FileInfoHeader(archivedFile.FileInfo(), "")
 	if err != nil {
-		errCh <- fmt.Errorf("Cannot create tar header for %v, error: %v", fileInfo.Name(), err)
+		errCh <- fmt.Errorf("Cannot create tar header for %v, error: %v", archivedFile.Name, err)
 	}
-
-	fileInfoHeader.Size = int64(len(processedContent))
 	err = app.tw.WriteHeader(fileInfoHeader)
 	if err != nil {
-		errCh <- fmt.Errorf("Cannot write tar header for %v, error: %v", fileInfo.Name(), err)
+		errCh <- fmt.Errorf("Cannot write tar header for %v, error: %v", archivedFile.Name, err)
+	}
+	file, err := archivedFile.Open()
+	if err != nil {
+		errCh <- err
+	}
+	defer file.Close()
+
+	_, err = io.Copy(app.tw, file)
+	if err != nil {
+		errCh <- fmt.Errorf("Cannot copy tar content for %v, error: %v", archivedFile.Name, err)
+	}
+}
+
+func (app *archiveProcessor) writeContent(archivedFile *zip.File, content string, errCh chan<- error) {
+	fileInfoHeader, err := tar.FileInfoHeader(archivedFile.FileInfo(), "")
+	if err != nil {
+		errCh <- fmt.Errorf("Cannot create tar header for %v, error: %v", archivedFile.Name, err)
 	}
 
-	_, err = app.tw.Write([]byte(processedContent))
+	fileInfoHeader.Size = int64(len(content))
+	err = app.tw.WriteHeader(fileInfoHeader)
 	if err != nil {
-		errCh <- fmt.Errorf("Cannot write tar content for %v, error: %v", fileInfo.Name(), err)
+		errCh <- fmt.Errorf("Cannot write tar header for %v, error: %v", archivedFile.Name, err)
 	}
+
+	_, err = app.tw.Write([]byte(content))
+	if err != nil {
+		errCh <- fmt.Errorf("Cannot write tar content for %v, error: %v", archivedFile.Name, err)
+	}
+}
+
+func handleProcessedContent(app *archiveProcessor, arch archivable, errCh chan<- error) {
+	app.writeContent(arch.archivedFile, arch.content, errCh)
+}
+
+func handleUnprocessedContent(app *archiveProcessor, arch archivable, errCh chan<- error) {
+	app.copyFile(arch.archivedFile, errCh)
 }
