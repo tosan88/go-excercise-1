@@ -21,7 +21,7 @@ type archiveProcessor struct {
 }
 
 type archivable struct {
-	content  string
+	content      string
 	archivedFile *zip.File
 	writeHandler func(*archiveProcessor, archivable, chan<- error)
 }
@@ -92,7 +92,6 @@ func (app *archiveProcessor) process() error {
 				app.lk.Lock()
 				defer app.lk.Unlock()
 				arch.writeHandler(app, arch, errCh)
-				//app.writeContentToFile(arch.archivedFile, arch.content, errCh)
 			}(&writerWg)
 		}
 	}
@@ -100,33 +99,28 @@ func (app *archiveProcessor) process() error {
 
 func (app *archiveProcessor) processArchivedFile(archivedFile *zip.File, errCh chan error, archivableCh chan archivable) {
 	log.Printf("Processing file: %v", archivedFile.Name)
-	file, err := archivedFile.Open()
-	if err != nil {
-		errCh <- err
-	}
-	defer file.Close()
 
 	fileName := archivedFile.Name
 	if strings.Contains(fileName, "_integers_") {
 		log.Printf("Archived file with integers: %v", fileName)
-		processedContent, err := processLineByLine(file, transformInt)
+		processedContent, err := processLineByLine(archivedFile, transformInt)
 		if err != nil {
 			errCh <- fmt.Errorf("Error by processing line by line: %v", err)
 		}
 		archivableCh <- archivable{
-			content: processedContent,
+			content:      processedContent,
 			archivedFile: archivedFile,
 			writeHandler: handleProcessedContent,
 		}
 
 	} else if strings.Contains(fileName, "_strings_") {
 		log.Printf("Archived file with strings: %v", fileName)
-		processedContent, err := processLineByLine(file, transformString)
+		processedContent, err := processLineByLine(archivedFile, transformString)
 		if err != nil {
 			errCh <- fmt.Errorf("Error by processing line by line: %v", err)
 		}
 		archivableCh <- archivable{
-			content: processedContent,
+			content:      processedContent,
 			archivedFile: archivedFile,
 			writeHandler: handleProcessedContent,
 		}
@@ -140,7 +134,13 @@ func (app *archiveProcessor) processArchivedFile(archivedFile *zip.File, errCh c
 
 }
 
-func processLineByLine(inputFile io.Reader, handler func(string) string) (string, error) {
+func processLineByLine(archivedFile *zip.File, handler func(string) string) (string, error) {
+	inputFile, err := archivedFile.Open()
+	if err != nil {
+		return "", err
+	}
+	defer inputFile.Close()
+
 	var processedLines []string
 	bufferedReader := bufio.NewReader(inputFile)
 	for {

@@ -5,10 +5,6 @@ import (
 	"testing"
 )
 
-func TestNoTransform(t *testing.T) {
-	assert.Equal(t, "test", noTransform("test"))
-}
-
 func TestTransformStringReversedAndSwappedCase(t *testing.T) {
 	assert.Equal(t, "HeLLO", transformString("ollEh"))
 }

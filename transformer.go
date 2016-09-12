@@ -43,7 +43,3 @@ func transformString(line string) string {
 	}
 	return strings.Join(transformedTokens, " ")
 }
-
-func noTransform(line string) string {
-	return line
-}
